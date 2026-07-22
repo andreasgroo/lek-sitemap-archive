@@ -1,0 +1,35 @@
+name: Sitemap-Snapshot holen
+on:
+  schedule:
+    # zweimal täglich (UTC) — Redundanz, falls GitHub einen Lauf verzögert/auslässt.
+    # Versetzt zu msg-sitemap-archive (4:30/14:30), damit sich die Läufe nicht überlagern.
+    - cron: '0 5 * * *'
+    - cron: '0 15 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sitemap abrufen
+        run: |
+          ts=$(TZ=Europe/Berlin date +%Y-%m-%d-%H%M)
+          mkdir -p snapshots
+          out="snapshots/news-sitemap-$ts.xml"
+          curl -sf --max-time 60 -A "Mozilla/5.0 (compatible; lek-sitemap-archive)" \
+            "https://www.leckerschmecker.me/news-sitemap.xml" -o "$out"
+          grep -q "sitemap-news" "$out"   # Plausibilitätscheck
+          echo "TS=$ts" >> "$GITHUB_ENV"
+      - name: events.csv neu bauen
+        run: python3 build_events.py
+      - name: Committen
+        run: |
+          git config user.name "sitemap-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add snapshots events.csv
+          git diff --staged --quiet || git commit -m "Snapshot $TS"
+          git push
